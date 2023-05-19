@@ -133,7 +133,7 @@ export function createResetButton<T extends ClickableOptions & ResetButtonOption
                             {unref(resetButton.conversion.buyMax) ? "Next:" : "Req:"}{" "}
                             {displayResource(
                                 resetButton.conversion.baseResource,
-                                unref(resetButton.conversion.buyMax) ||
+                                !unref(resetButton.conversion.buyMax) ||
                                     Decimal.lt(unref(resetButton.conversion.actualGain), 1)
                                     ? unref(resetButton.conversion.currentAt)
                                     : unref(resetButton.conversion.nextAt)
@@ -459,7 +459,7 @@ export function createFormulaPreview(
     const processedShowPreview = convertComputable(showPreview);
     const processedPreviewAmount = convertComputable(previewAmount);
     if (!formula.hasVariable()) {
-        throw new Error("Cannot create formula preview if the formula does not have a variable");
+        console.error("Cannot create formula preview if the formula does not have a variable");
     }
     return jsx(() => {
         if (unref(processedShowPreview)) {

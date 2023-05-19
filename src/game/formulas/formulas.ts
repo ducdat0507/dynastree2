@@ -2,7 +2,7 @@ import { Resource } from "features/resources/resource";
 import { NonPersistent } from "game/persistence";
 import Decimal, { DecimalSource, format } from "util/bignum";
 import { Computable, ProcessedComputable, convertComputable } from "util/computed";
-import { ComputedRef, Ref, computed, ref, unref } from "vue";
+import { Ref, computed, ref, unref } from "vue";
 import * as ops from "./operations";
 import type {
     EvaluateFunction,
@@ -104,7 +104,7 @@ export abstract class InternalFormula<T extends [FormulaSource] | FormulaSource[
 
     private setupConstant({ inputs }: { inputs: [FormulaSource] }): InternalFormulaProperties<T> {
         if (inputs.length !== 1) {
-            throw new Error("Evaluate function is required if inputs is not length 1");
+            console.error("Evaluate function is required if inputs is not length 1");
         }
         return {
             inputs: inputs as T,
@@ -250,7 +250,8 @@ export abstract class InternalFormula<T extends [FormulaSource] | FormulaSource[
                 }
                 return lhs.invert(value);
             }
-            throw new Error("Could not invert due to no input being a variable");
+            console.error("Could not invert due to no input being a variable");
+            return 0;
         }
         return new Formula({
             inputs: [value],
@@ -294,7 +295,8 @@ export abstract class InternalFormula<T extends [FormulaSource] | FormulaSource[
                 !formula.isInvertible() ||
                 (elseFormula != null && !elseFormula.isInvertible())
             ) {
-                throw new Error("Could not invert due to no input being a variable");
+                console.error("Could not invert due to no input being a variable");
+                return 0;
             }
             if (unref(processedCondition)) {
                 return lhs.invert(formula.invert(value));
@@ -1260,7 +1262,8 @@ export default class Formula<
         } else if (this.inputs.length === 1 && this.hasVariable()) {
             return value;
         }
-        throw new Error("Cannot invert non-invertible formula");
+        console.error("Cannot invert non-invertible formula");
+        return 0;
     }
 
     /**
@@ -1270,7 +1273,8 @@ export default class Formula<
      */
     evaluateIntegral(variable?: DecimalSource): DecimalSource {
         if (!this.isIntegrable()) {
-            throw new Error("Cannot evaluate integral of formula without integral");
+            console.error("Cannot evaluate integral of formula without integral");
+            return 0;
         }
         return this.getIntegralFormula().evaluate(variable);
     }
@@ -1282,7 +1286,8 @@ export default class Formula<
      */
     invertIntegral(value: DecimalSource): DecimalSource {
         if (!this.isIntegrable() || !this.getIntegralFormula().isInvertible()) {
-            throw new Error("Cannot invert integral of formula without invertible integral");
+            console.error("Cannot invert integral of formula without invertible integral");
+            return 0;
         }
         return (this.getIntegralFormula() as InvertibleFormula).invert(value);
     }
@@ -1309,7 +1314,8 @@ export default class Formula<
                 // We're the complex operation of this formula
                 stack = [];
                 if (this.internalIntegrate == null) {
-                    throw new Error("Cannot integrate formula with non-integrable operation");
+                    console.error("Cannot integrate formula with non-integrable operation");
+                    return Formula.constant(0);
                 }
                 let value = this.internalIntegrate.call(this, stack, ...this.inputs);
                 stack.forEach(func => (value = func(value)));
@@ -1329,14 +1335,16 @@ export default class Formula<
                 ) {
                     this.integralFormula = this;
                 } else {
-                    throw new Error("Cannot integrate formula without variable");
+                    console.error("Cannot integrate formula without variable");
+                    return Formula.constant(0);
                 }
             }
             return this.integralFormula;
         } else {
             // "Inner" part of the formula
             if (this.applySubstitution == null) {
-                throw new Error("Cannot have two complex operations in an integrable formula");
+                console.error("Cannot have two complex operations in an integrable formula");
+                return Formula.constant(0);
             }
             stack.push((variable: GenericFormula) =>
                 // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
@@ -1353,7 +1361,8 @@ export default class Formula<
             ) {
                 return this;
             } else {
-                throw new Error("Cannot integrate formula without variable");
+                console.error("Cannot integrate formula without variable");
+                return Formula.constant(0);
             }
         }
     }
@@ -1400,58 +1409,70 @@ export function printFormula(formula: FormulaSource): string {
 }
 
 /**
- * Utility for calculating the maximum amount of purchases possible with a given formula and resource. If {@link spendResources} is changed to false, the calculation will be much faster with higher numbers.
+ * Utility for calculating the maximum amount of purchases possible with a given formula and resource. If {@link cumulativeCost} is changed to false, the calculation will be much faster with higher numbers.
  * @param formula The formula to use for calculating buy max from
  * @param resource The resource used when purchasing (is only read from)
- * @param spendResources Whether or not to count spent resources on each purchase or not. If true, costs will be approximated for performance, skewing towards fewer purchases
- * @param summedPurchases How many of the most expensive purchases should be manually summed for better accuracy. If unspecified uses 10 when spending resources and 0 when not
+ * @param cumulativeCost Whether or not to count spent resources on each purchase or not. If true, costs will be approximated for performance, skewing towards fewer purchases
+ * @param directSum How many of the most expensive purchases should be manually summed for better accuracy. If unspecified uses 10 when spending resources and 0 when not
+ * @param maxBulkAmount Cap on how many can be purchased at once. If equal to 1 or lte to {@link directSum} then the formula does not need to be invertible. Defaults to Infinity.
  */
 export function calculateMaxAffordable(
-    formula: InvertibleFormula,
+    formula: GenericFormula,
     resource: Resource,
-    spendResources?: true,
-    summedPurchases?: number
-): ComputedRef<DecimalSource>;
-export function calculateMaxAffordable(
-    formula: InvertibleIntegralFormula,
-    resource: Resource,
-    spendResources: Computable<boolean>,
-    summedPurchases?: number
-): ComputedRef<DecimalSource>;
-export function calculateMaxAffordable(
-    formula: InvertibleFormula,
-    resource: Resource,
-    spendResources: Computable<boolean> = true,
-    summedPurchases?: number
+    cumulativeCost: Computable<boolean> = true,
+    directSum?: Computable<number>,
+    maxBulkAmount: Computable<DecimalSource> = Decimal.dInf
 ) {
-    const computedSpendResources = convertComputable(spendResources);
+    const computedCumulativeCost = convertComputable(cumulativeCost);
+    const computedDirectSum = convertComputable(directSum);
+    const computedmaxBulkAmount = convertComputable(maxBulkAmount);
     return computed(() => {
-        let affordable;
-        if (unref(computedSpendResources)) {
-            if (!formula.isIntegrable() || !formula.isIntegralInvertible()) {
-                throw new Error(
-                    "Cannot calculate max affordable of formula with non-invertible integral"
-                );
-            }
-            affordable = Decimal.floor(
-                formula.invertIntegral(Decimal.add(resource.value, formula.evaluateIntegral()))
-            ).sub(unref(formula.innermostVariable) ?? 0);
-            if (summedPurchases == null) {
-                summedPurchases = 10;
-            }
-        } else {
+        const maxBulkAmount = unref(computedmaxBulkAmount);
+        if (Decimal.eq(maxBulkAmount, 1)) {
+            return Decimal.gte(resource.value, formula.evaluate()) ? Decimal.dOne : Decimal.dZero;
+        }
+
+        const cumulativeCost = unref(computedCumulativeCost);
+        const directSum = unref(computedDirectSum) ?? (cumulativeCost ? 10 : 0);
+        let affordable: DecimalSource = 0;
+        if (Decimal.gt(maxBulkAmount, directSum)) {
             if (!formula.isInvertible()) {
-                throw new Error("Cannot calculate max affordable of non-invertible formula");
+                console.error(
+                    "Cannot calculate max affordable of non-invertible formula with more maxBulkAmount than directSum"
+                );
+                return 0;
             }
-            affordable = Decimal.floor(formula.invert(resource.value));
-            if (summedPurchases == null) {
-                summedPurchases = 0;
+            if (cumulativeCost) {
+                if (!formula.isIntegralInvertible()) {
+                    console.error(
+                        "Cannot calculate max affordable of formula with non-invertible integral"
+                    );
+                    return 0;
+                }
+                affordable = Decimal.floor(
+                    formula.invertIntegral(Decimal.add(resource.value, formula.evaluateIntegral()))
+                ).sub(unref(formula.innermostVariable) ?? 0);
+            } else {
+                affordable = Decimal.floor(formula.invert(resource.value));
             }
         }
-        if (summedPurchases > 0 && Decimal.lt(calculateCost(formula, affordable, true, 0), 1e308)) {
-            affordable = affordable.sub(summedPurchases).clampMin(0);
-            let summedCost = calculateCost(formula, affordable, true, 0);
-            while (true) {
+        affordable = Decimal.clampMax(affordable, maxBulkAmount);
+        if (directSum > 0) {
+            const preSumAffordable = affordable;
+            affordable = Decimal.sub(affordable, directSum).clampMin(0);
+            let summedCost;
+            if (cumulativeCost) {
+                summedCost = calculateCost(formula as InvertibleFormula, affordable, true, 0);
+            } else {
+                summedCost = formula.evaluate(
+                    Decimal.add(unref(formula.innermostVariable) ?? 0, affordable)
+                );
+            }
+            while (
+                Decimal.lt(affordable, maxBulkAmount) &&
+                Decimal.lt(affordable, Number.MAX_SAFE_INTEGER) &&
+                Decimal.add(preSumAffordable, 1).gte(affordable)
+            ) {
                 const nextCost = formula.evaluate(
                     affordable.add(unref(formula.innermostVariable) ?? 0)
                 );
@@ -1468,67 +1489,78 @@ export function calculateMaxAffordable(
 }
 
 /**
- * Utility for calculating the cost of a formula for a given amount of purchases. If {@link spendResources} is changed to false, the calculation will be much faster with higher numbers.
+ * Utility for calculating the cost of a formula for a given amount of purchases. If {@link cumulativeCost} is changed to false, the calculation will be much faster with higher numbers.
  * @param formula The formula to use for calculating buy max from
  * @param amountToBuy The amount of purchases to calculate the cost for
- * @param spendResources Whether or not to count spent resources on each purchase or not. If true, costs will be approximated for performance, skewing towards higher cost
- * @param summedPurchases How many purchases to manually sum for improved accuracy. If not specified, defaults to 10 when spending resources and 0 when not
+ * @param cumulativeCost Whether or not to count spent resources on each purchase or not. If true, costs will be approximated for performance, skewing towards higher cost
+ * @param directSum How many purchases to manually sum for improved accuracy. If not specified, defaults to 10 when cost is cumulative and 0 when not
  */
 export function calculateCost(
     formula: InvertibleFormula,
     amountToBuy: DecimalSource,
-    spendResources?: true,
-    summedPurchases?: number
+    cumulativeCost?: true,
+    directSum?: number
 ): DecimalSource;
 export function calculateCost(
     formula: InvertibleIntegralFormula,
     amountToBuy: DecimalSource,
-    spendResources: boolean,
-    summedPurchases?: number
+    cumulativeCost: boolean,
+    directSum?: number
 ): DecimalSource;
 export function calculateCost(
     formula: InvertibleFormula,
     amountToBuy: DecimalSource,
-    spendResources = true,
-    summedPurchases?: number
+    cumulativeCost = true,
+    directSum?: number
 ) {
+    // Single purchase
+    if (Decimal.eq(amountToBuy, 1)) {
+        return formula.evaluate();
+    }
+
     const origValue = unref(formula.innermostVariable) ?? 0;
     let newValue = Decimal.add(amountToBuy, origValue);
     const targetValue = newValue;
-    summedPurchases ??= spendResources ? 10 : 0;
-    newValue = newValue.sub(summedPurchases).clampMin(origValue);
+    directSum ??= cumulativeCost ? 10 : 0;
+    newValue = newValue.sub(directSum).clampMin(origValue);
     let cost: DecimalSource = 0;
-    if (spendResources) {
-        if (Decimal.gt(amountToBuy, summedPurchases)) {
+
+    // Indirect sum
+    if (Decimal.gt(amountToBuy, directSum)) {
+        if (!formula.isInvertible()) {
+            console.error("Cannot calculate cost with indirect sum of non-invertible formula");
+            return 0;
+        }
+        if (cumulativeCost) {
             if (!formula.isIntegrable()) {
-                throw new Error(
-                    "Cannot calculate cost with spending resources of non-integrable formula"
+                console.error(
+                    "Cannot calculate cost with cumulative cost of non-integrable formula"
                 );
+                return 0;
             }
             cost = Decimal.sub(formula.evaluateIntegral(newValue), formula.evaluateIntegral());
+            if (targetValue.gt(1e308)) {
+                // Too large of a number for directSum to make a difference,
+                // just get the cost and multiply by summed purchases
+                return Decimal.add(
+                    cost,
+                    Decimal.sub(targetValue, newValue).times(formula.evaluate(newValue))
+                );
+            }
+        } else {
+            cost = formula.evaluate(newValue);
+            newValue = newValue.add(1);
+            if (targetValue.gt(1e308)) {
+                // Too large of a number for directSum to make a difference,
+                // just get the cost and multiply by summed purchases
+                return Decimal.sub(targetValue, newValue).add(1).times(cost);
+            }
         }
-        if (targetValue.gt(1e308)) {
-            // Too large of a number for summedPurchases to make a difference,
-            // just get the cost and multiply by summed purchases
-            return Decimal.add(
-                cost,
-                Decimal.sub(targetValue, newValue).times(formula.evaluate(newValue))
-            );
-        }
-        for (let i = newValue.toNumber(); i < targetValue.toNumber(); i++) {
-            cost = Decimal.add(cost, formula.evaluate(i));
-        }
-    } else {
-        cost = formula.evaluate(newValue);
-        newValue = newValue.add(1);
-        if (targetValue.gt(1e308)) {
-            // Too large of a number for summedPurchases to make a difference,
-            // just get the cost and multiply by summed purchases
-            return Decimal.sub(targetValue, newValue).add(1).times(cost);
-        }
-        for (let i = newValue.toNumber(); i < targetValue.toNumber(); i++) {
-            cost = Decimal.add(cost, formula.evaluate(i));
-        }
+    }
+
+    // Direct sum
+    for (let i = newValue.toNumber(); i < targetValue.toNumber(); i++) {
+        cost = Decimal.add(cost, formula.evaluate(i));
     }
     return cost;
 }

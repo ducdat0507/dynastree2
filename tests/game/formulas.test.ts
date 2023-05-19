@@ -227,14 +227,15 @@ describe("Creating Formulas", () => {
                     expect(formula.evaluate()).compare_tolerance(expectedValue));
                 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
                 /* @ts-ignore */
-                test("Invert throws", () => expect(() => formula.invert(25)).toThrow());
-                // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-                /* @ts-ignore */
-                test("Integrate throws", () => expect(() => formula.evaluateIntegral()).toThrow());
-                test("Invert integral throws", () =>
+                test("Invert errors", () => expect(() => formula.invert(25)).toLogError());
+                test("Integrate errors", () =>
                     // eslint-disable-next-line @typescript-eslint/ban-ts-comment
                     /* @ts-ignore */
-                    expect(() => formula.invertIntegral(25)).toThrow());
+                    expect(() => formula.evaluateIntegral()).toLogError());
+                test("Invert integral errors", () =>
+                    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+                    /* @ts-ignore */
+                    expect(() => formula.invertIntegral(25)).toLogError());
             });
         }
         testConstant("number", () => Formula.constant(10));
@@ -256,10 +257,10 @@ describe("Creating Formulas", () => {
         // None of these formulas have variables, so they should all behave the same
         test("Is not marked as having a variable", () => expect(formula.hasVariable()).toBe(false));
         test("Is not invertible", () => expect(formula.isInvertible()).toBe(false));
-        test(`Formula throws if trying to invert`, () =>
+        test(`Formula errors if trying to invert`, () =>
             // eslint-disable-next-line @typescript-eslint/ban-ts-comment
             /* @ts-ignore */
-            expect(() => formula.invert(10)).toThrow());
+            expect(() => formula.invert(10)).toLogError());
         test("Is not integrable", () => expect(formula.isIntegrable()).toBe(false));
         test("Has a non-invertible integral", () =>
             expect(formula.isIntegralInvertible()).toBe(false));
@@ -495,12 +496,12 @@ describe("Inverting", () => {
         test("Non-invertible constant", () => {
             const formula = Formula.add(variable, constant.ceil());
             expect(formula.isInvertible()).toBe(true);
-            expect(() => formula.invert(10)).not.toThrow();
+            expect(() => formula.invert(10)).not.toLogError();
         });
         test("Non-invertible variable", () => {
             const formula = Formula.add(variable.ceil(), constant);
             expect(formula.isInvertible()).toBe(false);
-            expect(() => formula.invert(10)).toThrow();
+            expect(() => formula.invert(10)).toLogError();
         });
     });
 });
@@ -624,19 +625,19 @@ describe("Integrating", () => {
 
     test("Integrating nested complex formulas", () => {
         const formula = Formula.pow(1.05, variable).times(100).pow(0.5);
-        expect(() => formula.evaluateIntegral()).toThrow();
+        expect(() => formula.evaluateIntegral()).toLogError();
     });
 
     describe("Integrating with non-integrable sections", () => {
         test("Non-integrable constant", () => {
             const formula = Formula.add(variable, constant.ceil());
             expect(formula.isIntegrable()).toBe(true);
-            expect(() => formula.evaluateIntegral()).not.toThrow();
+            expect(() => formula.evaluateIntegral()).not.toLogError();
         });
         test("Non-integrable variable", () => {
             const formula = Formula.add(variable.ceil(), constant);
             expect(formula.isIntegrable()).toBe(false);
-            expect(() => formula.evaluateIntegral()).toThrow();
+            expect(() => formula.evaluateIntegral()).toLogError();
         });
     });
 });
@@ -657,7 +658,7 @@ describe("Inverting integrals", () => {
     describe("Invertible Integral functions marked as such", () => {
         function checkFormula(formula: InvertibleIntegralFormula) {
             expect(formula.isIntegralInvertible()).toBe(true);
-            expect(() => formula.invertIntegral(10)).to.not.throw();
+            expect(() => formula.invertIntegral(10)).not.toLogError();
         }
         invertibleIntegralZeroPramFunctionNames.forEach(name => {
             describe(name, () => {
@@ -676,7 +677,7 @@ describe("Inverting integrals", () => {
                 test(`${name}(var, var) is marked as not having an invertible integral`, () => {
                     const formula = Formula[name](variable, variable);
                     expect(formula.isIntegralInvertible()).toBe(false);
-                    expect(() => formula.invertIntegral(10)).to.throw();
+                    expect(() => formula.invertIntegral(10)).toLogError();
                 });
             });
         });
@@ -732,7 +733,7 @@ describe("Inverting integrals", () => {
 
     test("Inverting integral of nested complex formulas", () => {
         const formula = Formula.pow(1.05, variable).times(100).pow(0.5);
-        expect(() => formula.invertIntegral(100)).toThrow();
+        expect(() => formula.invertIntegral(100)).toLogError();
     });
 });
 
@@ -765,7 +766,7 @@ describe("Step-wise", () => {
         );
         expect(() =>
             Formula.step(constant, 10, value => Formula.add(value, 10)).evaluateIntegral()
-        ).toThrow();
+        ).toLogError();
     });
 
     test("Formula never marked as having an invertible integral", () => {
@@ -774,7 +775,7 @@ describe("Step-wise", () => {
         ).toBe(false);
         expect(() =>
             Formula.step(constant, 10, value => Formula.add(value, 10)).invertIntegral(10)
-        ).toThrow();
+        ).toLogError();
     });
 
     test("Formula modifiers with variables mark formula as non-invertible", () => {
@@ -866,7 +867,7 @@ describe("Conditionals", () => {
         );
         expect(() =>
             Formula.if(constant, true, value => Formula.add(value, 10)).evaluateIntegral()
-        ).toThrow();
+        ).toLogError();
     });
 
     test("Formula never marked as having an invertible integral", () => {
@@ -875,7 +876,7 @@ describe("Conditionals", () => {
         ).toBe(false);
         expect(() =>
             Formula.if(constant, true, value => Formula.add(value, 10)).invertIntegral(10)
-        ).toThrow();
+        ).toLogError();
     });
 
     test("Formula modifiers with variables mark formula as non-invertible", () => {
@@ -976,7 +977,7 @@ describe("Custom Formulas", () => {
                     evaluate: () => 6,
                     invert: value => value
                 }).invert(10)
-            ).toThrow());
+            ).toLogError());
         test("One input inverts correctly", () =>
             expect(
                 new Formula({
@@ -1003,7 +1004,7 @@ describe("Custom Formulas", () => {
                     evaluate: () => 0,
                     integrate: stack => variable
                 }).evaluateIntegral()
-            ).toThrow());
+            ).toLogError());
         test("One input integrates correctly", () =>
             expect(
                 new Formula({
@@ -1030,7 +1031,7 @@ describe("Custom Formulas", () => {
                     evaluate: () => 0,
                     integrate: stack => variable
                 }).invertIntegral(20)
-            ).toThrow());
+            ).toLogError());
         test("One input inverts integral correctly", () =>
             expect(
                 new Formula({
@@ -1073,12 +1074,19 @@ describe("Buy Max", () => {
     beforeAll(() => {
         resource = createResource(ref(100000));
     });
-    describe("Without spending", () => {
-        test("Throws on formula with non-invertible integral", () => {
-            // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-            /* @ts-ignore */
-            const maxAffordable = calculateMaxAffordable(Formula.neg(10), resource, false);
-            expect(() => maxAffordable.value).toThrow();
+    describe("Without cumulative cost", () => {
+        test("Errors on calculating max affordable of non-invertible formula", () => {
+            const purchases = ref(1);
+            const variable = Formula.variable(purchases);
+            const formula = Formula.abs(variable);
+            const maxAffordable = calculateMaxAffordable(formula, resource, false);
+            expect(() => maxAffordable.value).toLogError();
+        });
+        test("Errors on calculating cost of non-invertible formula", () => {
+            const purchases = ref(1);
+            const variable = Formula.variable(purchases);
+            const formula = Formula.abs(variable);
+            expect(() => calculateCost(formula, 5, false, 0)).toLogError();
         });
         test("Calculates max affordable and cost correctly", () => {
             const variable = Formula.variable(0);
@@ -1089,7 +1097,7 @@ describe("Buy Max", () => {
                 Decimal.pow(1.05, 141).times(100)
             );
         });
-        test("Calculates max affordable and cost correctly with summing last purchases", () => {
+        test("Calculates max affordable and cost correctly with direct sum", () => {
             const variable = Formula.variable(0);
             const formula = Formula.pow(1.05, variable).times(100);
             const maxAffordable = calculateMaxAffordable(formula, resource, false, 4);
@@ -1102,10 +1110,19 @@ describe("Buy Max", () => {
             expect(calculatedCost).compare_tolerance(actualCost);
         });
     });
-    describe("With spending", () => {
-        test("Throws on calculating max affordable of non-invertible formula", () => {
-            const maxAffordable = calculateMaxAffordable(Formula.abs(10), resource);
-            expect(() => maxAffordable.value).toThrow();
+    describe("With cumulative cost", () => {
+        test("Errors on calculating max affordable of non-invertible formula", () => {
+            const purchases = ref(1);
+            const variable = Formula.variable(purchases);
+            const formula = Formula.abs(variable);
+            const maxAffordable = calculateMaxAffordable(formula, resource, true);
+            expect(() => maxAffordable.value).toLogError();
+        });
+        test("Errors on calculating cost of non-invertible formula", () => {
+            const purchases = ref(1);
+            const variable = Formula.variable(purchases);
+            const formula = Formula.abs(variable);
+            expect(() => calculateCost(formula, 5, true, 0)).toLogError();
         });
         test("Estimates max affordable and cost correctly with 0 purchases", () => {
             const purchases = ref(0);
@@ -1163,7 +1180,7 @@ describe("Buy Max", () => {
                 Decimal.sub(actualCost, calculatedCost).abs().div(actualCost).toNumber()
             ).toBeLessThan(0.1);
         });
-        test("Estimates max affordable and cost more accurately with summing last purchases", () => {
+        test("Estimates max affordable and cost more accurately with direct sum", () => {
             const purchases = ref(1);
             const variable = Formula.variable(purchases);
             const formula = Formula.pow(1.05, variable).times(100);
@@ -1190,7 +1207,7 @@ describe("Buy Max", () => {
                 Decimal.sub(actualCost, calculatedCost).abs().div(actualCost).toNumber()
             ).toBeLessThan(0.02);
         });
-        test("Handles summing purchases when making few purchases", () => {
+        test("Handles direct sum when making few purchases", () => {
             const purchases = ref(90);
             const variable = Formula.variable(purchases);
             const formula = Formula.pow(1.05, variable).times(100);
@@ -1218,7 +1235,7 @@ describe("Buy Max", () => {
             // Since we're summing all the purchases this should be equivalent
             expect(calculatedCost).compare_tolerance(actualCost);
         });
-        test("Handles summing purchases when making very few purchases", () => {
+        test("Handles direct sum when making very few purchases", () => {
             const purchases = ref(0);
             const variable = Formula.variable(purchases);
             const formula = variable.add(1);
@@ -1236,7 +1253,7 @@ describe("Buy Max", () => {
             // Since we're summing all the purchases this should be equivalent
             expect(calculatedCost).compare_tolerance(actualCost);
         });
-        test("Handles summing purchases when over e308 purchases", () => {
+        test("Handles direct sum when over e308 purchases", () => {
             resource.value = "1ee308";
             const purchases = ref(0);
             const variable = Formula.variable(purchases);
@@ -1247,10 +1264,10 @@ describe("Buy Max", () => {
             expect(Decimal.isFinite(calculatedCost)).toBe(true);
             resource.value = 100000;
         });
-        test("Handles summing purchases of non-integrable formula", () => {
+        test("Handles direct sum of non-integrable formula", () => {
             const purchases = ref(0);
             const formula = Formula.variable(purchases).abs();
-            expect(() => calculateCost(formula, 10)).not.toThrow();
+            expect(() => calculateCost(formula, 10)).not.toLogError();
         });
     });
 });
